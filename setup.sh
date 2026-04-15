@@ -13,8 +13,14 @@ SUBMODULE_PATH=".claude/sf-shared"
 echo "→ Creo .claude/ se non esiste..."
 mkdir -p .claude
 
-echo "→ Aggiungo submodule $REPO_URL in $SUBMODULE_PATH..."
-git submodule add "$REPO_URL" "$SUBMODULE_PATH"
+# Controlla se il submodule è già registrato in .gitmodules
+if git config --file .gitmodules --get "submodule.$SUBMODULE_PATH.url" > /dev/null 2>&1; then
+  echo "→ Submodule già registrato — aggiorno con git submodule update --init --remote..."
+  git submodule update --init --remote "$SUBMODULE_PATH"
+else
+  echo "→ Aggiungo submodule $REPO_URL in $SUBMODULE_PATH..."
+  git submodule add "$REPO_URL" "$SUBMODULE_PATH"
+fi
 
 echo "→ Creo symlink .claude/skills e .claude/commands..."
 ln -sf sf-shared/skills  .claude/skills
@@ -22,7 +28,9 @@ ln -sf sf-shared/commands .claude/commands
 
 echo "→ Committo..."
 git add .gitmodules .claude/
-git commit -m "Add sf-claude-skills submodule (skills + commands)"
+git commit -m "Add sf-claude-skills submodule (skills + commands)" 2>/dev/null \
+  || git commit -m "Update sf-claude-skills submodule" 2>/dev/null \
+  || echo "  (nessuna modifica da committare — già aggiornato)"
 
 echo ""
 echo "✓ Setup completato."
