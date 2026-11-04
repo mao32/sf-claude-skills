@@ -99,7 +99,8 @@ Preconditions: work done inside the worktree, files **uncommitted**, metadata re
 prettier on metadata XML. Content agreed with the user first: prefer **new** files and targeted edits;
 check platform constraints (label lengths, exact picklist values).
 
-1. **Dry-run** on the first stage org, only the WI files:
+1. **Dry-run** on the first stage org, only the WI files (a quick check on the branch files; the full
+   check on the merge candidate is C2):
    `sf project deploy start --dry-run --ignore-conflicts -o <integration_org> -d <file> [-d <file> …]`
    → all components OK before going on.
 2. **Review with the user** (`git -C <worktree> status --short` + `git diff --stat`, a table of files +
@@ -116,8 +117,9 @@ check platform constraints (label lengths, exact picklist values).
    mergeability; otherwise DC reports "source control is checking the pull request").
 8. **Wait for the registry** (in background, not by eye): DC fills `WorkItemComponent` minutes after
    push + PR. Poll on `dc_org`:
-   `SELECT MemberName, MemberType, Operation FROM WorkItemComponent WHERE WorkItem.Name='<WI>'`.
-   If SOQL is blocked by hooks that don't know the DC objects, use REST:
+   `SELECT MemberType, MemberName, ChangeType FROM WorkItemComponent WHERE WorkItemComponentList.WorkItem.Name='<WI>'`
+   (the parent is `WorkItemComponentList`, not `WorkItem`; `ChangeType` = NEW / CHANGE / MANUAL…).
+   Run it with the MCP `run_soql_query` tool. If `sf data query` is blocked by a hook, use REST instead:
    `sf api request rest "/services/data/v66.0/query?q=<url-encoded SOQL>" -o <dc_org>`.
    Empty registry right after the PR ≠ lost commit. Compare with
    `git diff --name-only origin/<target-branch>...origin/<WI>`: missing files = they will NOT deploy.
