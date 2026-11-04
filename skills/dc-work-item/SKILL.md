@@ -1,6 +1,6 @@
 ---
 name: dc-work-item
-description: "Full DevOps Center NG work item cycle: start (create WI → In Progress → DC creates the branch → worktree on that branch), commit (MCP commit → push → PR → wait for DC registry), promote (pre-checks → promote → verify what really deployed). TRIGGER when: user says 'nuovo WI', 'stacca un WI', 'apri un work item', 'start work item', 'committa il WI', 'crea la PR', 'promuovi', 'promote', or any metadata feature is about to start in a DevOps Center project. DO NOT TRIGGER for docs/memory-only changes (they go straight to the integration branch, no WI)."
+description: "Full DevOps Center NG work item cycle: start (create WI → In Progress → DC creates the branch → worktree on that branch), commit (MCP commit → push → PR → wait for DC registry), promote (pre-checks → promote → verify what really deployed). TRIGGER when: user says 'nuovo WI', 'stacca un WI', 'apri un work item', 'start work item', 'committa il WI', 'porta in pipeline', 'crea/apri la PR', 'promuovi', 'promote', or any metadata feature is about to start in a DevOps Center project. DO NOT TRIGGER for docs/memory-only changes (they go straight to the integration branch, no WI)."
 ---
 
 # DevOps Center NG — Work Item cycle
@@ -33,7 +33,7 @@ Where they disagree, **this skill wins** for DC NG projects using it:
 - official Phase "commit" = plain `git add/commit/push` → here commits go through
   `commit_devops_center_work_item` (the DC registry is what gets deployed);
 - official skills do not wait for the DC-created branch, do not use worktrees, do not check the
-  `WorkItemComponent` registry nor what the promote really deployed → phases A5–A7, B6, C below.
+  `WorkItemComponent` registry nor what the promote really deployed → phases A5–A7, B8, C below.
 
 ## 0. Parameters (read first)
 
@@ -44,7 +44,8 @@ Read the `## DevOps Center` section of the project `CLAUDE.md`:
 | `dc_org` | alias of the org hosting DevOps Center (all `*_devops_center_*` MCP calls use it) |
 | `dc_project` | DC project name + Id where new WIs are created |
 | `worktree_root` | folder where WI worktrees live (`<worktree_root>/WI-00XXXX`) |
-| `dev_org` | default org for retrieve/edit inside the worktree (per-WI override allowed) |
+| `dev_org` | default org for retrieve/edit inside the worktree (per-WI override allowed) — source of truth |
+| `integration_org` | org of the first pipeline stage, used for dry-runs before the commit |
 | `github_repo` | `owner/repo`, for `gh` checks |
 | `promote_limit` | optional: furthest stage this kind of WI may be promoted to without explicit user go |
 
@@ -94,21 +95,34 @@ Missing section → ask the user for the values and propose adding the section. 
 ## Phase B — COMMIT
 
 Preconditions: work done inside the worktree, files **uncommitted**, metadata retrieved from the org
-(not hand-authored), no prettier on metadata XML.
+(not hand-authored — start from a retrieve of `dev_org` or an existing file of the same type), no
+prettier on metadata XML. Content agreed with the user first: prefer **new** files and targeted edits;
+check platform constraints (label lengths, exact picklist values).
 
-1. Review the diff with the user (`git -C <worktree> status --short` + `git diff --stat`).
-   Exclude from the change set: forceignored files, inactive flows, shared layouts/flexipages not
-   belonging to the feature, per-org components handled by a separate procedure.
-2. `commit_devops_center_work_item` (hasUpdates:false on modified files is a known DC NG trait — not an error).
-3. `git -C <worktree> push origin HEAD` and verify it landed on `origin/<WI>`.
-4. WI status must be **In Progress** → `create_devops_center_pull_request`.
-5. `gh pr view <N> --repo <github_repo> --json mergeable,mergeStateStatus` (forces GitHub to compute
+1. **Dry-run** on the first stage org, only the WI files:
+   `sf project deploy start --dry-run --ignore-conflicts -o <integration_org> -d <file> [-d <file> …]`
+   → all components OK before going on.
+2. **Review with the user** (`git -C <worktree> status --short` + `git diff --stat`, a table of files +
+   one sample file). Exclude from the change set: forceignored files, inactive flows, shared
+   layouts/flexipages not belonging to the feature, per-org components handled by a separate procedure.
+   Nothing past this point without the user's confirmation.
+3. **Deploy to `dev_org`** of the WI files only (`-d` per file, `--ignore-conflicts`) when the work was not
+   done directly there — keeps the source of truth aligned. Only with the user's ok for this WI.
+4. `commit_devops_center_work_item` with `repoPath` = the worktree (hasUpdates:false on modified files is
+   a known DC NG trait — not an error).
+5. `git -C <worktree> push origin HEAD` and verify it landed on `origin/<WI>`.
+6. WI status must be **In Progress** → `create_devops_center_pull_request` (NEW → `422 head wasn't supplied`).
+7. `gh pr view <N> --repo <github_repo> --json mergeable,mergeStateStatus` (forces GitHub to compute
    mergeability; otherwise DC reports "source control is checking the pull request").
-6. **Wait for the registry**: DC fills `WorkItemComponent` minutes after the PR. Poll on `dc_org`
-   (`SELECT MemberName, MemberType, Operation FROM WorkItemComponent WHERE WorkItem.Name='<WI>'`, or
-   `sf api request rest` if SOQL is blocked). Empty registry ≠ failure until it has had time.
-   Compare with `git diff --name-only origin/<target-branch>...origin/<WI>`: missing files = they
-   will NOT deploy.
+8. **Wait for the registry** (in background, not by eye): DC fills `WorkItemComponent` minutes after
+   push + PR. Poll on `dc_org`:
+   `SELECT MemberName, MemberType, Operation FROM WorkItemComponent WHERE WorkItem.Name='<WI>'`.
+   If SOQL is blocked by hooks that don't know the DC objects, use REST:
+   `sf api request rest "/services/data/v66.0/query?q=<url-encoded SOQL>" -o <dc_org>`.
+   Empty registry right after the PR ≠ lost commit. Compare with
+   `git diff --name-only origin/<target-branch>...origin/<WI>`: missing files = they will NOT deploy.
+   Still empty/incomplete after a reasonable wait → stop and propose the alternatives to the user
+   (commit from the DC UI on the dev environment, or the hybrid merge + direct deploy) — never pick one yourself.
 
 ## Phase C — PROMOTE
 
@@ -122,7 +136,7 @@ Invoke it; this phase only adds the project guardrails around it.
    - target stage Id: `SELECT Id, Name, SourceCodeRepositoryBranch.Name FROM DevopsPipelineStage`
    `-o/--target-org` for every `sf devops` command is **`dc_org`**, never the worktree default org.
 2. **Before** — project pre-checks the official validate does not do:
-   - registry vs branch diff (step B6) — files missing from the registry will not deploy;
+   - registry vs branch diff (step B8) — files missing from the registry will not deploy;
    - `git merge-tree` of the WI branch vs the target stage branch → `Duplicate picklist value` in record types;
    - dry-run deploy of the registry contents against the target org from an isolated copy → missing dependencies.
 3. **Run `dx-devops-promote`.** Its `--skip-validation` rule stands (only when its own validate passed in
@@ -140,5 +154,19 @@ Invoke it; this phase only adds the project guardrails around it.
 | `Duplicate picklist value: <field> - <value>` | same value added by two branches in different positions |
 | `Invalid version number: N` (flowDefinition) | flowDefinition committed without its flow |
 | `insufficient access rights on cross-reference id` on flow | WI deletes a flow → unrecoverable, new WI without the delete |
-| `source control is checking the pull request` | GitHub mergeability UNKNOWN → step B5 |
+| `source control is checking the pull request` | GitHub mergeability UNKNOWN → step B7 |
 | `Global value set 'X__c' cannot be resolved` on RecordType | picklist field X__c missing on target |
+
+### Other traps
+- **Registry ≠ git diff**: DC deploys its registry, not the whole PR diff (step B8).
+- **Edits to files already registered in a WI** may not update the package → for fixes to components
+  already in the registry, consider a new WI.
+- **Picklist values**: deactivate instead of deleting; first check no record or metadata uses them.
+- **The promote deploys the merge candidate** (source merged onto target): formal fixes on the source
+  branch, per-org values on the target branch.
+
+## What to report at every step
+- WI name, branch, worktree path, PR URL.
+- Dry-run / deploy outcome with component counts (e.g. 7/7, 0 errors).
+- Registry state (how many components, which) before proposing the promote.
+- What was written and where; what was **not** done and why.
