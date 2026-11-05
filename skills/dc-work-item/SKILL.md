@@ -132,6 +132,18 @@ check platform constraints (label lengths, exact picklist values).
    WorkItem.Name='<WI>'` (no row = not synced yet → UI not opened since the PR).
    Still empty/incomplete after the UI was opened and a reasonable wait → stop and propose the alternatives to the user
    (commit from the DC UI on the dev environment, or the hybrid merge + direct deploy) — never pick one yourself.
+   - Known platform behaviour, not documented by Salesforce: [NextGeneration-DevOpsCenter #51](https://github.com/forcedotcom/NextGeneration-DevOpsCenter/issues/51)
+     (open, no Salesforce answer) — MCP commits register only when the WI page is opened; `DevopsActivityLog`
+     keeps the real commit time in `ActivityDate`, the UI-open time in `CreatedDate`. Follow-up of
+     [#20](https://github.com/forcedotcom/NextGeneration-DevOpsCenter/issues/20) (MCP commits never shown; fixed
+     only for WIs created after April 2026).
+   - **To verify — headless trigger:** per [sf-skills #384](https://github.com/forcedotcom/sf-skills/issues/384)
+     the VCS sync also runs on `sf devops promotion validate` (INSPECT request within ~1 s, done in ~5 s) and on
+     `promotion complete`. Not yet confirmed on our projects: next WI, after the PR, run
+     `promotion validate` for the WI toward the first stage **before** asking the user to open the UI, then poll
+     the registry. If it fills, adopt it as the default and keep the UI as fallback; record the outcome here.
+   - Do **not** wait for the registry before creating the PR (step B6 does not depend on it); wait for it only
+     before the promote.
 
 ## Phase C — PROMOTE
 
@@ -175,6 +187,8 @@ Invoke it; this phase only adds the project guardrails around it.
 | `source control is checking the pull request` | GitHub mergeability UNKNOWN → step B7 |
 | `Global value set 'X__c' cannot be resolved` on RecordType | picklist field X__c missing on target |
 | `SUBMITTED` but nothing deployed, WI stays on the previous stage | target stage is bundled → promote the source stage (`-s`), step C3 |
+| `No components to deploy` with a non-empty WI, right after the push | promote submitted before DC synced the commit → registry check (B8) first |
+| `No components to deploy` on a **new** component | its files reached the branch in separate commits (e.g. class, then `-meta.xml`); reported 9/9 in [sf-skills #384](https://github.com/forcedotcom/sf-skills/issues/384), `--deploy-all` worked (only with user agreement). Commit a new component with all its files in one commit |
 
 ### Other traps
 - **Registry ≠ git diff**: DC deploys its registry, not the whole PR diff (step B8).
