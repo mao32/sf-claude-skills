@@ -105,7 +105,9 @@ check platform constraints (label lengths, exact picklist values).
    → all components OK before going on.
 2. **Review with the user** (`git -C <worktree> status --short` + `git diff --stat`, a table of files +
    one sample file). Exclude from the change set: forceignored files, inactive flows, shared
-   layouts/flexipages not belonging to the feature, per-org components handled by a separate procedure.
+   layouts/flexipages not belonging to the feature, per-org components handled by a separate procedure,
+   the submodule pointer (`.claude/sf-shared`) unless the WI is about it, and Agentforce publish output
+   (see "Agentforce agents in a WI" below).
    Nothing past this point without the user's confirmation.
 3. **Deploy to `dev_org`** of the WI files only (`-d` per file, `--ignore-conflicts`) when the work was not
    done directly there — keeps the source of truth aligned. Only with the user's ok for this WI.
@@ -181,6 +183,20 @@ Invoke it; this phase only adds the project guardrails around it.
 - **Picklist values**: deactivate instead of deleting; first check no record or metadata uses them.
 - **The promote deploys the merge candidate** (source merged onto target): formal fixes on the source
   branch, per-org values on the target branch.
+
+### Agentforce agents in a WI
+- **In the WI** (source): `aiAuthoringBundles/<Agent>/` (`.agent` + `bundle-meta.xml`), the Apex/Flow
+  actions with tests, custom objects they use, and the permission set granting `agentAccesses`.
+- **Not in the WI**: `aiAgents/` and `aiAgentDefinitionVersions/` (also `bots/`, `genAiPlannerBundles/`
+  on older orgs). `sf agent publish authoring-bundle` retrieves them into the worktree as **output of
+  that org's publish** (one folder per version, e.g. `<Agent>#3`); every org must produce its own.
+- **Per-org runbook after the promote** (DC does not do it): `sf agent publish authoring-bundle` →
+  `sf agent activate`; Agentforce Data Library (files, search index) — its `ARFPC_<libraryId>` differs per
+  org, so the `rag_feature_config_id` in the `.agent` is org-specific and must be updated/handled before
+  publishing in the next org; Einstein Agent User if used; permission set / PSG assignments to users
+  (standard ones such as Agentforce Coworker User and Data Cloud User cannot be in the WI).
+- Publish and activate are release actions: each publish creates a permanent version; run them only
+  on orgs the user named, never on a pipeline stage org as a side effect of testing.
 
 ## What to report at every step
 - WI name, branch, worktree path, PR URL.
