@@ -115,15 +115,20 @@ check platform constraints (label lengths, exact picklist values).
 6. WI status must be **In Progress** → `create_devops_center_pull_request` (NEW → `422 head wasn't supplied`).
 7. `gh pr view <N> --repo <github_repo> --json mergeable,mergeStateStatus` (forces GitHub to compute
    mergeability; otherwise DC reports "source control is checking the pull request").
-8. **Wait for the registry** (in background, not by eye): DC fills `WorkItemComponent` minutes after
-   push + PR. Poll on `dc_org`:
+8. **Wait for the registry** (in background, not by eye). DC does **not** ingest the commit on push or
+   PR: the registry is filled when someone **opens the DevOps Center UI** (WI page or pipeline view),
+   which triggers a bulk sync of all open WIs (observed: registry empty for >1 h after the PR, then
+   created 11 s after the UI was opened; every open WI got the same `LastModifiedDate`). So right after
+   the PR **ask the user to open the WI in DevOps Center**, then poll on `dc_org`:
    `SELECT MemberType, MemberName, ChangeType FROM WorkItemComponent WHERE WorkItemComponentList.WorkItem.Name='<WI>'`
    (the parent is `WorkItemComponentList`, not `WorkItem`; `ChangeType` = NEW / CHANGE / MANUAL…).
    Run it with the MCP `run_soql_query` tool. If `sf data query` is blocked by a hook, use REST instead:
    `sf api request rest "/services/data/v66.0/query?q=<url-encoded SOQL>" -o <dc_org>`.
    Empty registry right after the PR ≠ lost commit. Compare with
    `git diff --name-only origin/<target-branch>...origin/<WI>`: missing files = they will NOT deploy.
-   Still empty/incomplete after a reasonable wait → stop and propose the alternatives to the user
+   Quick check that DC has picked the WI up at all: `SELECT Id FROM WorkItemComponentList WHERE
+   WorkItem.Name='<WI>'` (no row = not synced yet → UI not opened since the PR).
+   Still empty/incomplete after the UI was opened and a reasonable wait → stop and propose the alternatives to the user
    (commit from the DC UI on the dev environment, or the hybrid merge + direct deploy) — never pick one yourself.
 
 ## Phase C — PROMOTE
@@ -143,6 +148,15 @@ Invoke it; this phase only adds the project guardrails around it.
    - dry-run deploy of the registry contents against the target org from an isolated copy → missing dependencies.
 3. **Run `dx-devops-promote`.** Its `--skip-validation` rule stands (only when its own validate passed in
    this session). `--force`, `--deploy-all` and a non-default `--test-level` only with explicit user agreement.
+   **Bundled target stage** (`DevopsPipelineStage.IsBundled = true`, typically Production): promoting a
+   single WI (`--work-item-id` / MCP `promote_devops_center_work_item`) returns `SUBMITTED` but deploys
+   nothing. Release the whole source stage instead:
+   `sf devops promote -o <dc_org> -s <source stage Id> -t <bundled stage Id> --json`
+   (observed: deploy in ~1 min, WIs → `CLOSED` on the bundled stage, DC merges into its branch).
+   It releases **every** WI waiting in the source stage, so first list them
+   (`SELECT Name, Status, Subject FROM WorkItem WHERE DevopsPipelineStageId='<source stage Id>' AND Status != 'CLOSED'`)
+   and the commits it will carry (`git log --no-merges --oneline origin/<bundled branch>..origin/<source branch>`),
+   show both to the user and get an explicit go for that set.
 4. **After** — verify what really deployed: latest `DeployRequest` on the target →
    `sf project deploy report --job-id <id> --json` → `details.componentSuccesses` vs expected files;
    PR merged (`gh pr view <N> --json state`); WI status advanced. A `*_SUCCESS` request status with
@@ -158,6 +172,7 @@ Invoke it; this phase only adds the project guardrails around it.
 | `insufficient access rights on cross-reference id` on flow | WI deletes a flow → unrecoverable, new WI without the delete |
 | `source control is checking the pull request` | GitHub mergeability UNKNOWN → step B7 |
 | `Global value set 'X__c' cannot be resolved` on RecordType | picklist field X__c missing on target |
+| `SUBMITTED` but nothing deployed, WI stays on the previous stage | target stage is bundled → promote the source stage (`-s`), step C3 |
 
 ### Other traps
 - **Registry ≠ git diff**: DC deploys its registry, not the whole PR diff (step B8).
