@@ -156,11 +156,17 @@ Invoke it; this phase only adds the project guardrails around it.
    - WI Id: `SELECT Id FROM WorkItem WHERE Name = '<WI>'`
    - target stage Id: `SELECT Id, Name, SourceCodeRepositoryBranch.Name FROM DevopsPipelineStage`
    `-o/--target-org` for every `sf devops` command is **`dc_org`**, never the worktree default org.
-2. **Before** — project pre-checks the official validate does not do:
+2. **Before** — WI status must be **Ready to Promote**: after the PR the WI is `IN_REVIEW`, and
+   `sf devops promote` refuses it (`not eligible for promotion: <Id> (IN_REVIEW). Only work items with status
+   READY_TO_PROMOTE or PROMOTED can be promoted`). Check `SELECT Status FROM WorkItem WHERE Name='<WI>'` on `dc_org`
+   and, if needed, `update_devops_center_work_item_status(status="Ready to Promote")` before validate/promote.
+   Note: `sf devops work-item prepare` with only `--work-item-id` + `--target-stage-id` returns
+   `BAD_REQUEST sourceStageId is required` for a WI not yet in any stage — not needed for the first stage, skip it.
+3. **Before** — project pre-checks the official validate does not do:
    - registry vs branch diff (step B8) — files missing from the registry will not deploy;
    - `git merge-tree` of the WI branch vs the target stage branch → `Duplicate picklist value` in record types;
    - dry-run deploy of the registry contents against the target org from an isolated copy → missing dependencies.
-3. **Run `dx-devops-promote`.** Its `--skip-validation` rule stands (only when its own validate passed in
+4. **Run `dx-devops-promote`.** Its `--skip-validation` rule stands (only when its own validate passed in
    this session). `--force`, `--deploy-all` and a non-default `--test-level` only with explicit user agreement.
    **Bundled target stage** (`DevopsPipelineStage.IsBundled = true`, typically Production): promoting a
    single WI (`--work-item-id` / MCP `promote_devops_center_work_item`) returns `SUBMITTED` but deploys
@@ -171,7 +177,7 @@ Invoke it; this phase only adds the project guardrails around it.
    (`SELECT Name, Status, Subject FROM WorkItem WHERE DevopsPipelineStageId='<source stage Id>' AND Status != 'CLOSED'`)
    and the commits it will carry (`git log --no-merges --oneline origin/<bundled branch>..origin/<source branch>`),
    show both to the user and get an explicit go for that set.
-4. **After** — verify what really deployed: latest `DeployRequest` on the target →
+5. **After** — verify what really deployed: latest `DeployRequest` on the target →
    `sf project deploy report --job-id <id> --json` → `details.componentSuccesses` vs expected files;
    PR merged (`gh pr view <N> --json state`); WI status advanced. A `*_SUCCESS` request status with
    non-null `errorDetails` is a failure (see `dx-devops-request-status`).
@@ -186,7 +192,8 @@ Invoke it; this phase only adds the project guardrails around it.
 | `insufficient access rights on cross-reference id` on flow | WI deletes a flow → unrecoverable, new WI without the delete |
 | `source control is checking the pull request` | GitHub mergeability UNKNOWN → step B7 |
 | `Global value set 'X__c' cannot be resolved` on RecordType | picklist field X__c missing on target |
-| `SUBMITTED` but nothing deployed, WI stays on the previous stage | target stage is bundled → promote the source stage (`-s`), step C3 |
+| `SUBMITTED` but nothing deployed, WI stays on the previous stage | target stage is bundled → promote the source stage (`-s`), step C4 |
+| `not eligible for promotion: <Id> (IN_REVIEW)` | WI still In Review after the PR → set **Ready to Promote** (step C2) |
 | `No components to deploy` with a non-empty WI, right after the push | promote submitted before DC synced the commit → registry check (B8) first |
 | `No components to deploy` on a **new** component | its files reached the branch in separate commits (e.g. class, then `-meta.xml`); reported 9/9 in [sf-skills #384](https://github.com/forcedotcom/sf-skills/issues/384), `--deploy-all` worked (only with user agreement). Commit a new component with all its files in one commit |
 
