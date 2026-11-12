@@ -130,15 +130,17 @@ bash <skill_dir>/scripts/clip_html.sh <scratchpad>/reply-<id>.html
 The user pastes it with ⌘V into the monday update (bold/italic/lists kept, plain-text fallback
 included). "Put it back on the clipboard" → re-run `clip_html.sh`. macOS only (`osascript`, `textutil`).
 
-Reply structure (short, for business users, little platform jargon):
+**Keep it short and to the point — 3 to 6 lines, no section headings.** Business readers want the
+cause and what to do, not the investigation. The full analysis goes to the user in chat (step 6);
+evidence (logs, timelines) goes in an attachment only if useful, never pasted in the body.
 
-1. Greeting to the reporter; one sentence with the cause in plain words.
-2. **Immediate workaround** — step by step, with button/field names as the user sees them.
-3. **Definitive fix** — what will be done and by whom; only state as done what is done.
-4. Optional **note** — other users exposed, structural proposal needing customer action, what we need from them.
-5. Closing + the user's signature.
+1. Greeting; the cause in one plain sentence.
+2. What to do now (the workaround), in one or two lines with the button/field names the user sees.
+3. Only if needed: what happens next and who does it (only state as done what is done), or the one
+   thing we need from them.
+4. Closing + the user's signature.
 
-Section headings in `reply_language`.
+No minute-by-minute timelines, no lists of tips, no platform explanations unless asked.
 
 ## 6. Report to the user
 
