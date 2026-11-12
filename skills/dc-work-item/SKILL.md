@@ -137,11 +137,12 @@ check platform constraints (label lengths, exact picklist values).
      keeps the real commit time in `ActivityDate`, the UI-open time in `CreatedDate`. Follow-up of
      [#20](https://github.com/forcedotcom/NextGeneration-DevOpsCenter/issues/20) (MCP commits never shown; fixed
      only for WIs created after April 2026).
-   - **To verify — headless trigger:** per [sf-skills #384](https://github.com/forcedotcom/sf-skills/issues/384)
-     the VCS sync also runs on `sf devops promotion validate` (INSPECT request within ~1 s, done in ~5 s) and on
-     `promotion complete`. Not yet confirmed on our projects: next WI, after the PR, run
-     `promotion validate` for the WI toward the first stage **before** asking the user to open the UI, then poll
-     the registry. If it fills, adopt it as the default and keep the UI as fallback; record the outcome here.
+   - **Headless trigger — unproven, slow at best (tested 11/11/2026, WI-000317):** per
+     [sf-skills #384](https://github.com/forcedotcom/sf-skills/issues/384) the VCS sync should also run on
+     `sf devops promotion validate`. Here `promotion validate` returned success twice and the registry stayed
+     empty for >2 min, then the 4 components appeared on their own (CreatedDate 13:05:51) **before** the user
+     opened the UI; the trigger is unclear (late effect of validate, or another sync). Default: run validate,
+     ask the user to open the WI in DC, and poll — whichever comes first.
    - Do **not** wait for the registry before creating the PR (step B6 does not depend on it); wait for it only
      before the promote.
 
