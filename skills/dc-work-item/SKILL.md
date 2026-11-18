@@ -117,6 +117,11 @@ check platform constraints (label lengths, exact picklist values).
 6. WI status must be **In Progress** → `create_devops_center_pull_request` (NEW → `422 head wasn't supplied`).
 7. `gh pr view <N> --repo <github_repo> --json mergeable,mergeStateStatus` (forces GitHub to compute
    mergeability; otherwise DC reports "source control is checking the pull request").
+7a. **Code review of the PR — ask the user first** ("faccio fare una review della PR #N?"). On a yes, run the
+   `code-review` skill on the PR number (`/code-review <N>`; add `--comment` only if the user wants the findings
+   posted on GitHub). Report the findings in chat; fixes go into the WI branch through a new
+   `commit_devops_center_work_item` (never a manual commit), followed by a new dry-run. It can run while
+   waiting for the registry (B8); finish it before the promote (Phase C).
 8. **Wait for the registry** (in background, not by eye). DC does **not** ingest the commit on push or
    PR: the registry is filled when someone **opens the DevOps Center UI** (WI page or pipeline view),
    which triggers a bulk sync of all open WIs (observed: registry empty for >1 h after the PR, then
